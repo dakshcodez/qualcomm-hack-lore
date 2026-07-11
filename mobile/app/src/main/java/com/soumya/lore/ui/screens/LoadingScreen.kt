@@ -41,12 +41,23 @@ import com.soumya.lore.ui.theme.LoreTheme
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** The graph canvas sits on a near-black background distinct from the rest of the app. */
 private val GraphBackground = Color(0xFF0D0D0D)
-private const val TRAVEL_LAP_DURATION_MS = 7000
+
+// Stage 2 has no fixed duration and never loops. The dot advances toward
+// (but never quite reaches) TRICKLE_CEILING in successive steps, each
+// covering TRICKLE_APPROACH_FACTOR of the remaining distance — a classic
+// "unknown total duration" progress pattern: naturally decelerating, and
+// entirely paced by how long the backend actually takes to respond, since
+// each step only fires after the previous one completes. The instant the
+// backend responds, a single fast tween covers whatever distance remains.
+private const val TRICKLE_CEILING = 0.92f
+private const val TRICKLE_APPROACH_FACTOR = 0.35f
+private const val TRICKLE_STEP_DURATION_MS = 900
+private const val FAST_ARRIVAL_TWEEN_MS = 500
+private const val LIGHT_UP_TWEEN_MS = 700
 
 /**
  * Three-stage retrieval visualization: the query detaches from Home and
@@ -96,43 +107,50 @@ fun LoadingScreen(
         // in around it. Nothing about the graph renders before this point.
         graphVisibility.animateTo(1f, tween(450, easing = FastOutSlowInEasing))
 
-        // Stage 2: travel loops continuously starting from this exact point
-        // (lapProgress 0 == travelWaypoints.first(), where the node already
-        // is, so there's no jump when the canvas switches to following it).
-        // Only the 3-5 nodes geometrically near the path light up, timed to
-        // when the dot actually passes near each one — everything else off
-        // the path stays dim no matter how long the search takes. Both this
-        // and the (mocked) backend call must finish before we exit — if the
-        // backend is slow, the loop just keeps traveling seamlessly.
+        // Stage 2: the dot trickles forward — never resetting to the start —
+        // pacing itself entirely off how long the backend actually takes.
+        // Relevant nodes light up (once) as soon as the dot's real progress
+        // reaches their position on the path.
         isTraveling = true
-        val travelJob = launch {
-            while (true) {
-                lapProgress.snapTo(0f)
-                lapProgress.animateTo(1f, tween(TRAVEL_LAP_DURATION_MS, easing = LinearEasing))
-            }
-        }
-
-        coroutineScope {
-            launch { awaitMockSearch() }
-            launch {
-                var previousT = 0f
-                for ((nodeIndex, pathT) in graph.relevantNodePlan) {
-                    val deltaMs = ((pathT - previousT) * TRAVEL_LAP_DURATION_MS).toLong().coerceAtLeast(0)
-                    delay(deltaMs)
-                    nodeGlow[nodeIndex].animateTo(1f, tween(700, easing = FastOutSlowInEasing))
-                    previousT = pathT
+        val litNodeIds = mutableSetOf<Int>()
+        fun lightDueNodes() {
+            for ((nodeIndex, pathT) in graph.relevantNodePlan) {
+                if (lapProgress.value >= pathT && litNodeIds.add(nodeIndex)) {
+                    launch { nodeGlow[nodeIndex].animateTo(1f, tween(LIGHT_UP_TWEEN_MS, easing = FastOutSlowInEasing)) }
                 }
             }
         }
 
-        // Stage 3: stop the loop, hand off to a deliberate move toward
-        // center, fade the graph away, grow the node into a glow — then
-        // crossfade into a static card silhouette before navigating, so the
-        // real Results screen lands on an already-settled shape instead of
-        // a mid-motion one.
-        travelJob.cancel()
-        // Snap queryPosition to wherever the loop left off before switching
-        // the canvas over to following it, so there's no visible jump.
+        val trickleJob = launch {
+            var target = 0f
+            while (true) {
+                target = (target + (TRICKLE_CEILING - target) * TRICKLE_APPROACH_FACTOR)
+                    .coerceAtMost(TRICKLE_CEILING)
+                lapProgress.animateTo(target, tween(TRICKLE_STEP_DURATION_MS, easing = LinearEasing))
+                lightDueNodes()
+            }
+        }
+
+        awaitMockSearch()
+
+        // Stage 3: the instant the backend responds, stop trickling and
+        // dash straight to the true end of the path — then hand off to a
+        // deliberate move toward center, fade the graph away, grow the node
+        // into a glow, and crossfade into a static card silhouette before
+        // navigating, so the real Results screen lands on an already-settled
+        // shape instead of a mid-motion one.
+        trickleJob.cancel()
+        coroutineScope {
+            launch { lapProgress.animateTo(1f, tween(FAST_ARRIVAL_TWEEN_MS, easing = FastOutSlowInEasing)) }
+            // Anything not yet lit (dot hadn't geometrically reached it) lights now.
+            for ((nodeIndex, _) in graph.relevantNodePlan) {
+                if (litNodeIds.add(nodeIndex)) {
+                    launch { nodeGlow[nodeIndex].animateTo(1f, tween(LIGHT_UP_TWEEN_MS, easing = FastOutSlowInEasing)) }
+                }
+            }
+        }
+        // Snap queryPosition to the true end before switching the canvas
+        // over to following it, so there's no visible jump.
         queryPosition.snapTo(pathPosition(graph.travelWaypoints, lapProgress.value))
         isTraveling = false
         coroutineScope {
