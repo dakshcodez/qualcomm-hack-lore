@@ -38,6 +38,19 @@ def test_fallback_logs_a_warning(caplog):
     assert "Cloud AI 100 unavailable" in caplog.text
 
 
+def test_fallback_warning_carries_the_caller_supplied_request_logger(caplog):
+    from pc.api.logging_config import get_request_logger
+
+    request_logger = get_request_logger(request_id="req-smoke-test")
+    candidates = [{"title": "a", "chunk": "b", "embedding": [1.0, 0.0]}]
+
+    with caplog.at_level(logging.WARNING, logger="lore"):
+        rerank_and_generate("query", [1.0, 0.0], candidates, request_logger=request_logger)
+
+    warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert any(getattr(r, "request_id", None) == "req-smoke-test" for r in warning_records)
+
+
 def test_uses_real_client_answer_when_cloud_ai100_available(monkeypatch):
     class FakeWorkingClient:
         def generate(self, prompt):

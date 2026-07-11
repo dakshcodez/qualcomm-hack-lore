@@ -41,7 +41,7 @@ def _template_fallback_answer(query, candidates):
     return f'Based on "{title}": {excerpt}' if excerpt else f'Found a match in "{title}".'
 
 
-def rerank_and_generate(query, query_embedding, candidates):
+def rerank_and_generate(query, query_embedding, candidates, request_logger=None):
     """Rerank candidates and generate an answer — via the real Cloud AI
     100 client if available, else a local templated fallback.
 
@@ -49,6 +49,9 @@ def rerank_and_generate(query, query_embedding, candidates):
         query: the original user query text.
         query_embedding: the query's embedding vector (used for reranking).
         candidates: list of chunk row dicts (from VectorStore.search()).
+        request_logger: optional logger (e.g. logging_config.get_request_logger()'s
+            LoggerAdapter) to log through, so the fallback warning carries
+            the caller's request ID. Defaults to the plain module logger.
 
     Returns:
         {"answer": str, "ranked_sources": list[dict]}. `ranked_sources` is
@@ -56,6 +59,8 @@ def rerank_and_generate(query, query_embedding, candidates):
         from the real Cloud AI 100 client when available, else a
         deterministic templated fallback over the top-ranked candidate.
     """
+    log = request_logger or logger
+
     if not candidates:
         return {
             "answer": f'No relevant results found for "{query}".',
@@ -68,7 +73,7 @@ def rerank_and_generate(query, query_embedding, candidates):
         client = CloudAI100Client()
         answer = generate_answer(query, ranked_sources, client)
     except Exception as exc:
-        logger.warning("Cloud AI 100 unavailable, falling back to local templated answer: %s", exc)
+        log.warning("Cloud AI 100 unavailable, falling back to local templated answer: %s", exc)
         answer = _template_fallback_answer(query, ranked_sources)
 
     return {"answer": answer, "ranked_sources": ranked_sources}

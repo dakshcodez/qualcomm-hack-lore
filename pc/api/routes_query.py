@@ -47,7 +47,7 @@ def query(request: QueryRequest, embedder=Depends(get_embedder), vector_store=De
     logger.debug("LanceDB search took %.2fms, %d candidates", search_ms, len(candidates))
 
     cloud_start = time.perf_counter()
-    result = cloud_client.rerank_and_generate(request.text, embedding, candidates)
+    result = cloud_client.rerank_and_generate(request.text, embedding, candidates, request_logger=logger)
     cloud_ms = (time.perf_counter() - cloud_start) * 1000
     logger.debug("Cloud AI 100 round-trip took %.2fms", cloud_ms)
 
