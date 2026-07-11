@@ -1,0 +1,14 @@
+# Phase 1 — indexing engine dependencies.
+watchdog
+pymupdf
+python-docx
+python-pptx
+openpyxl
+lancedb
+onnxruntime
+onnx
+
+# onnxruntime-qnn only ships wheels for Windows ARM64 (the real Snapdragon X
+# Copilot+ PC). It cannot be installed on other platforms, so it is left out
+# here — install it separately on the target hardware:
+#   pip install onnxruntime-qnn
