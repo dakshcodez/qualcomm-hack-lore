@@ -1,0 +1,9 @@
+# Phase 3 — Cloud AI 100 dependencies.
+numpy
+
+# The real Qualcomm AI SDK (for talking to the Cloud AI 100 accelerator and
+# running LLaMA 3 8B / Phi-3 mini on it) is proprietary, hardware-specific
+# software — it is not on PyPI and is not declared here. Install it per
+# Qualcomm's on-site instructions on the machine hosting the Cloud AI 100
+# card, then wire it into cloud/inference.py's CloudAI100Client
+# (see the TODOs in that file).
