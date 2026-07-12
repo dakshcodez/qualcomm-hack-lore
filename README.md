@@ -14,6 +14,7 @@ Built for the **Snapdragon Multiverse Hackathon** (Qualcomm India, Bengaluru —
 - [The solution](#the-solution)
 - [How it works](#how-it-works)
 - [Architecture](#architecture)
+- [Browser extension features](#browser-extension-features)
 - [Repository layout](#repository-layout)
 - [Tech stack](#tech-stack)
 - [Current status](#current-status)
@@ -89,6 +90,14 @@ Three devices, three distinct jobs. Removing any one of them breaks the system �
 - **Cloud AI 100 — the intelligence.** Query-time reranking and answer generation (`cloud/`), reached over the local network via Cirrascale's Imagine SDK. Running an LLM on the same machine that's continuously embedding new content would stall indexing every time someone searches; splitting the work across two accelerators means neither blocks the other.
 - **Mobile app — the interface.** The only thing the user actually touches (`mobile/`). Records a voice query, transcribes it via Sarvam AI, sends it to the PC over WiFi, and renders the answer with its sources. It's the device that's always in your pocket — the PC isn't.
 - **Browser extension — the second sense.** A Manifest V3 extension (`extension/`) that feeds actively-read web pages, PDFs, and OCR'd image text into the same indexing pipeline via `POST /index`, so the things you read *outside* your filesystem end up just as searchable as the things you save to it.
+
+## Browser extension features
+
+- **Dwell-time page capture** — `content_script.js` only indexes a page once you've actually read it (30s+ on-page), not just visited it, so tab-hoarding doesn't pollute your knowledge base.
+- **In-browser PDF text extraction** — `pdf_capture.js` pulls text straight out of PDFs opened in-browser via `pdf.js`, no download-and-reindex round trip needed.
+- **On-device OCR for images** — `image_ocr.js` runs Tesseract.js (via an offscreen document) to pull readable text out of images you dwell on, so screenshots and image-based content are searchable too.
+- **Single shared ingestion path** — everything captured (pages, PDFs, OCR'd images) funnels through the same `POST /index` contract as the filesystem indexer, so it lands in the same LanceDB table with no separate pipeline to maintain.
+- **Zero third-party upload** — capture, extraction, and OCR all happen locally in the browser/offscreen context; the only network call is to your own PC's FastAPI server on the LAN.
 
 ## Repository layout
 
