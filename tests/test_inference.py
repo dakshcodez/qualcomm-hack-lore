@@ -74,9 +74,12 @@ def test_build_general_prompt_does_not_restrict_to_sources():
     assert "general knowledge" in prompt.lower()
 
 
-def test_build_general_prompt_tells_the_model_to_flag_the_answer_as_unsourced():
+def test_build_general_prompt_asks_for_article_style_without_disclaimers():
     prompt = build_general_prompt("query")
-    assert "isn't based on the user's own files" in prompt
+    assert "article" in prompt.lower()
+    # Instructed to avoid this framing, not to produce it.
+    assert "based on my knowledge" in prompt.lower()
+    assert "do not use" in prompt.lower()
 
 
 def test_generate_general_answer_calls_client_with_the_general_prompt():

@@ -76,22 +76,28 @@ def build_general_prompt(query):
     """Build a prompt for when no indexed sources matched the query at all
     (nothing's been indexed yet, or nothing relevant exists) — unlike
     build_prompt(), this doesn't restrict the model to citing sources; it
-    tells the model there's no personal context available and to answer
-    from general knowledge instead, while being upfront that the answer
-    isn't grounded in anything the user actually wrote or read.
+    draws on general knowledge instead. Styled to read like a factual
+    article excerpt rather than a chatbot reply, so a fallback answer
+    doesn't look jarringly different from a grounded one — the UI already
+    discloses "0 sources found" separately, so the answer text itself
+    doesn't need a "based on my knowledge" disclaimer cluttering it.
 
     Args:
         query: the user's original query text.
 
     Returns:
-        A prompt string instructing the model to answer generally.
+        A prompt string instructing the model to answer generally, in an
+        article-like voice.
     """
     return (
         "You are Lore, a private on-device assistant. No documents in the "
-        "user's personal index matched this question — either nothing "
-        "relevant has been indexed yet, or the index is empty. Answer from "
-        "your own general knowledge instead, and make clear at the start "
-        "of your answer that this isn't based on the user's own files.\n\n"
+        "user's personal index matched this question, so answer using "
+        "your own general knowledge instead. Write the answer the way a "
+        "neutral, factual reference article would state it: direct, "
+        "third-person prose that states the facts plainly, as if it were "
+        "an excerpt from an article on the subject. Do not use "
+        "conversational framing or disclaimers like 'as an AI' or 'based "
+        "on my knowledge' — just answer.\n\n"
         f"Question: {query}\n"
         "Answer:"
     )

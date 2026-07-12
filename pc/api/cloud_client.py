@@ -8,12 +8,15 @@ docstring for the full env-var contract).
 
 When nothing was found to ground an answer in at all (nothing's been
 indexed yet, or nothing matched the query), this no longer just says so
-— it asks the Cloud AI 100 LLM to answer from general knowledge instead
-(clearly flagged as not coming from the user's own files), so a search
-with no matches doesn't just dead-end. That path uses the same
-NotImplementedError-vs-real-error fallback as the grounded path, so it
-degrades to the old "no relevant results" message if Cloud AI 100 isn't
-configured either.
+— it asks the Cloud AI 100 LLM to answer from general knowledge instead,
+styled to read like a factual article excerpt (see
+cloud.inference.build_general_prompt()), so a search with no matches
+doesn't just dead-end. The response's `sources` list stays empty either
+way — that's the honest signal to the caller that this wasn't grounded
+in anything the user indexed, without cluttering the answer text itself
+with a disclaimer. That path uses the same NotImplementedError-vs-real-error
+fallback as the grounded path, so it degrades to the old "no relevant
+results" message if Cloud AI 100 isn't configured either.
 
 Input: a query string + its embedding + the top-k candidate chunk rows
 from VectorStore.search() (candidates may be empty).
