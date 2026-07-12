@@ -14,6 +14,13 @@ val localProperties = Properties().apply {
 }
 val sarvamApiKey: String = localProperties.getProperty("SARVAM_API_KEY") ?: ""
 
+// The PC's local IP:port, e.g. "http://192.168.1.42:8000" once on the
+// hackathon venue WiFi (per CLAUDE.md's networking notes). Defaults to the
+// Android emulator's alias for the host machine's localhost so the app
+// talks to a `uvicorn` instance running on the same dev machine out of the
+// box, before real hardware/WiFi is available.
+val pcBaseUrl: String = localProperties.getProperty("PC_BASE_URL") ?: "http://10.0.2.2:8000"
+
 android {
     namespace = "com.soumya.lore"
     compileSdk {
@@ -32,6 +39,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "SARVAM_API_KEY", "\"$sarvamApiKey\"")
+        buildConfigField("String", "PC_BASE_URL", "\"$pcBaseUrl\"")
     }
 
     buildTypes {

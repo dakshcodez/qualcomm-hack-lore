@@ -51,6 +51,29 @@ def test_fallback_warning_carries_the_caller_supplied_request_logger(caplog):
     assert any(getattr(r, "request_id", None) == "req-smoke-test" for r in warning_records)
 
 
+def test_unexpected_client_error_still_falls_back_but_logs_as_error(monkeypatch, caplog):
+    # A bug in generate_answer/a real (broken) client shouldn't be
+    # mislabeled as "Cloud AI 100 unavailable" (that's specifically for
+    # the expected NotImplementedError case) — it should still fall back
+    # so /query survives, but be logged distinctly, with a traceback.
+    class BrokenClient:
+        def generate(self, prompt):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(cloud_client, "CloudAI100Client", BrokenClient)
+
+    candidates = [{"title": "notes.txt", "chunk": "the hackathon starts July 11", "embedding": [1.0, 0.0]}]
+    with caplog.at_level(logging.WARNING, logger="lore"):
+        result = rerank_and_generate("query", [1.0, 0.0], candidates)
+
+    assert "notes.txt" in result["answer"]  # still falls back to a real answer
+    assert "Cloud AI 100 unavailable" not in caplog.text
+    assert "Unexpected error" in caplog.text
+    error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(error_records) == 1
+    assert error_records[0].exc_info is not None  # traceback was captured
+
+
 def test_uses_real_client_answer_when_cloud_ai100_available(monkeypatch):
     class FakeWorkingClient:
         def generate(self, prompt):

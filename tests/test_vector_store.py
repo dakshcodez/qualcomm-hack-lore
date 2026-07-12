@@ -91,3 +91,29 @@ def test_reopening_existing_db_reuses_tables(tmp_path):
 
     store2 = VectorStore(db_path, embedding_dim=4)
     assert store2.text_table.count_rows() == 1
+
+
+def test_delete_by_location_removes_only_matching_rows(store):
+    store.upsert_chunks([
+        _record(location="/tmp/a.txt", title="a1"),
+        _record(location="/tmp/a.txt", title="a2"),
+        _record(location="/tmp/b.txt", title="b1"),
+    ])
+
+    store.delete_by_location("/tmp/a.txt")
+
+    rows = store.text_table.to_arrow().to_pylist()
+    assert store.text_table.count_rows() == 1
+    assert [r["title"] for r in rows] == ["b1"]
+
+
+def test_delete_by_location_is_a_noop_when_nothing_matches(store):
+    store.upsert_chunks([_record(location="/tmp/a.txt")])
+    store.delete_by_location("/tmp/does-not-exist.txt")
+    assert store.text_table.count_rows() == 1
+
+
+def test_delete_by_location_handles_single_quotes_safely(store):
+    store.upsert_chunks([_record(location="/tmp/it's a file.txt")])
+    store.delete_by_location("/tmp/it's a file.txt")
+    assert store.text_table.count_rows() == 0

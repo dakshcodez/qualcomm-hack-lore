@@ -4,8 +4,9 @@ the same shared pipeline used for filesystem indexing) and stores it.
 
 Input: IndexRequest {text, url, title}.
 Output: IndexResponse {status, chunks_indexed}.
-Side effects: runs embedder inference; writes to LanceDB via
-VectorStore.upsert_chunks(); logs request lifecycle.
+Side effects: runs embedder inference; deletes any previously-indexed
+chunks for the same URL and writes the new ones to LanceDB (so re-visiting
+a page doesn't duplicate rows); logs request lifecycle.
 """
 
 import time
@@ -48,6 +49,9 @@ def index(request: IndexRequest, embedder=Depends(get_embedder), vector_store=De
             }
             for chunk, embedding in zip(chunks, embeddings)
         ]
+        # Replace this URL's previous chunks (if any) so re-visiting the
+        # same page doesn't duplicate rows on every dwell-time trigger.
+        vector_store.delete_by_location(request.url)
         vector_store.upsert_chunks(records)
     except Exception:
         logger.exception("Failed to index /index payload for %s", request.url)

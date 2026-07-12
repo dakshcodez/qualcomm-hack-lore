@@ -1,3 +1,6 @@
+import sys
+import types
+
 import pytest
 
 from cloud.inference import CloudAI100Client, build_prompt, generate_answer
@@ -50,14 +53,70 @@ def test_build_prompt_handles_missing_title():
     assert "untitled source" in prompt
 
 
-def test_cloud_ai100_client_raises_not_implemented_on_construction():
-    with pytest.raises(NotImplementedError, match="Qualcomm AI SDK"):
+def test_cloud_ai100_client_raises_not_implemented_when_api_key_missing(monkeypatch):
+    monkeypatch.delenv("IMAGINE_API_KEY", raising=False)
+    with pytest.raises(NotImplementedError, match="IMAGINE_API_KEY"):
         CloudAI100Client()
 
 
-def test_cloud_ai100_client_error_message_includes_model_and_device():
-    with pytest.raises(NotImplementedError, match="phi-3-mini"):
-        CloudAI100Client(model_name="phi-3-mini", device_id=2)
+def test_cloud_ai100_client_raises_not_implemented_when_imagine_package_missing(monkeypatch):
+    monkeypatch.setenv("IMAGINE_API_KEY", "test-key")
+    monkeypatch.setitem(sys.modules, "imagine", None)  # simulate `import imagine` failing
+    with pytest.raises(NotImplementedError, match="imagine.*package"):
+        CloudAI100Client()
+
+
+def _install_fake_imagine_module(monkeypatch, chat_impl):
+    class ChatMessage:
+        def __init__(self, role, content):
+            self.role = role
+            self.content = content
+
+    class FakeResponse:
+        def __init__(self, content):
+            self.first_content = content
+
+    class ImagineClient:
+        def __init__(self, api_key=None, endpoint=None):
+            self.api_key = api_key
+            self.endpoint = endpoint
+
+        def chat(self, messages, model):
+            return FakeResponse(chat_impl(messages, model))
+
+    fake_module = types.SimpleNamespace(ChatMessage=ChatMessage, ImagineClient=ImagineClient)
+    monkeypatch.setitem(sys.modules, "imagine", fake_module)
+
+
+def test_cloud_ai100_client_calls_imagine_sdk_with_configured_model(monkeypatch):
+    monkeypatch.setenv("IMAGINE_API_KEY", "test-key")
+    monkeypatch.setenv("IMAGINE_MODEL_NAME", "some-cloud-ai-100-model")
+    received = {}
+
+    def chat_impl(messages, model):
+        received["messages"] = messages
+        received["model"] = model
+        return "a real answer"
+
+    _install_fake_imagine_module(monkeypatch, chat_impl)
+
+    client = CloudAI100Client()
+    answer = client.generate("what is the meaning of life")
+
+    assert answer == "a real answer"
+    assert received["model"] == "some-cloud-ai-100-model"
+    assert received["messages"][0].role == "user"
+    assert received["messages"][0].content == "what is the meaning of life"
+
+
+def test_cloud_ai100_client_defaults_model_name_when_unset(monkeypatch):
+    monkeypatch.setenv("IMAGINE_API_KEY", "test-key")
+    monkeypatch.delenv("IMAGINE_MODEL_NAME", raising=False)
+    _install_fake_imagine_module(monkeypatch, chat_impl=lambda messages, model: "ok")
+
+    client = CloudAI100Client()
+
+    assert client.model_name  # a non-empty default, not left unset
 
 
 def test_generate_answer_calls_client_with_built_prompt():

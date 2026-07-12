@@ -102,7 +102,7 @@ this Windows ARM64 machine:
 pytest
 ```
 
-You should see all tests pass (144 at the time of writing). If something
+You should see all tests pass (156 at the time of writing). If something
 fails here, fix it before moving on — everything past this point builds
 on this working.
 
@@ -196,7 +196,61 @@ Look for the `IPv4 Address` under your active WiFi adapter.
 
 ---
 
-## 7. Known gap: real embeddings aren't wired up yet
+## 7. Wiring the real Cloud AI 100 LLM (Imagine SDK)
+
+By default `/query` answers with a deterministic templated fallback (just
+echoes the top matching chunk) — that's `cloud/inference.py`'s
+`CloudAI100Client` telling you it isn't configured yet. To get real
+LLM-generated answers from a Cloud AI 100-hosted model, you need
+Cirrascale's **Imagine SDK 0.4.2**, which talks to Cloud AI 100 over HTTP
+(no on-device Qualcomm AI SDK / physical card access needed for this
+part — this works from any machine with network access to your Imagine
+endpoint, including this PC).
+
+1. Get an API key and endpoint URL from `https://aisuite.cirrascale.com/api-keys`.
+
+2. Download the wheel from
+   `https://aisuite.cirrascale.com/sdk/install.html` and install it:
+
+   ```powershell
+   pip install imagine_sdk-0.4.2-py3-none-any.whl
+   ```
+
+3. Set environment variables in the same terminal you run `uvicorn` from:
+
+   ```powershell
+   $env:IMAGINE_API_KEY = "your-api-key-here"
+   $env:IMAGINE_ENDPOINT_URL = "your-endpoint-url-here"   # optional, if the SDK needs it
+   $env:IMAGINE_MODEL_NAME = "your-cloud-ai-100-model-name"  # e.g. whatever your account lists under Cloud AI 100
+   ```
+
+   `IMAGINE_API_KEY` is the only one that's required — `IMAGINE_MODEL_NAME`
+   defaults to `"Llama-3.1-8B"` if unset, but you should set it explicitly
+   to whichever model your account has hosted on Cloud AI 100, otherwise
+   the call may fail (and quietly fall back to the templated answer).
+
+4. Restart `uvicorn` (env vars are only read at process start / per-request,
+   not hot-reloaded) and re-run the `/query` curl check from step 6. If it's
+   wired up correctly, `lore.log` will show:
+
+   ```
+   Cloud AI 100 client configured via Imagine SDK (model=..., endpoint=...)
+   ```
+
+   instead of a `Cloud AI 100 unavailable, falling back to local templated
+   answer` warning.
+
+**Nothing else needs to change** — `pc/api/cloud_client.py` already tries
+the real client on every `/query` call and only falls back if it raises;
+setting these three env vars is the entire integration surface.
+
+If `IMAGINE_API_KEY` is set but you still see the fallback warning, check
+`lore.log` for the specific error: a bad `IMAGINE_MODEL_NAME` (model not
+found on your account), an unreachable `IMAGINE_ENDPOINT_URL`, or the
+`imagine` package not being importable (re-check step 2) are the most
+likely causes — the log message tells you which.
+
+## 8. Known gap: real embeddings aren't wired up yet
 
 Read this before spending time on the real EmbeddingGemma model.
 
@@ -225,7 +279,7 @@ known-good way to validate the pipeline on this hardware — it proves the
 NPU/GPU/CPU selection, LanceDB writes, and API wiring all work; it does
 not prove real search quality.
 
-## 8. Getting and quantizing the real model (best effort — verify as you go)
+## 9. Getting and quantizing the real model (best effort — verify as you go)
 
 This part I can't fully verify without live access to Hugging Face, so
 treat it as a starting point, not a copy-paste guarantee:
@@ -259,7 +313,7 @@ exact contract.
 
 ---
 
-## 9. Monitoring NPU usage
+## 10. Monitoring NPU usage
 
 Three ways to check the NPU is actually doing the work, from quick to thorough:
 
@@ -289,7 +343,7 @@ cite if a judge asks about NPU usage.
 
 ---
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 - **QNN never appears in `get_available_providers()`** — you likely
   still have both `onnxruntime` and `onnxruntime-qnn` installed (they

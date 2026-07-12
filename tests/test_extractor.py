@@ -1,4 +1,4 @@
-import fitz
+from reportlab.pdfgen import canvas
 import openpyxl
 import pytest
 from docx import Document as DocxDocument
@@ -9,13 +9,12 @@ from pc.indexer import extractor
 
 def test_extract_pdf_returns_one_segment_per_page(tmp_path):
     path = tmp_path / "sample.pdf"
-    doc = fitz.open()
-    page1 = doc.new_page()
-    page1.insert_text((72, 72), "Hello PDF page one")
-    page2 = doc.new_page()
-    page2.insert_text((72, 72), "Hello PDF page two")
-    doc.save(path)
-    doc.close()
+    c = canvas.Canvas(str(path))
+    c.drawString(72, 72, "Hello PDF page one")
+    c.showPage()
+    c.drawString(72, 72, "Hello PDF page two")
+    c.showPage()
+    c.save()
 
     segments = extractor.extract_pdf(path)
 

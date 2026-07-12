@@ -1,18 +1,18 @@
 """Phase 3 — Cloud AI 100 client wiring for the /query route: reranks
 candidates via cloud.reranker, attempts real generation via
-cloud.inference.CloudAI100Client, and falls back to a deterministic
+cloud.inference.CloudAI100Client (a Cloud AI 100-hosted model, reached
+via Cirrascale's Imagine SDK), and falls back to a deterministic
 templated answer (Phase 2's original behavior) if that's unavailable —
-which it always is until cloud/inference.py's CloudAI100Client is wired
-up on-site to real hardware (see that module's docstring for why it's
-intentionally left unimplemented here).
+which it is until IMAGINE_API_KEY is set (see cloud/inference.py's
+docstring for the full env-var contract).
 
 Input: a query string + its embedding + the top-k candidate chunk rows
 from VectorStore.search().
 Output: {"answer": str, "ranked_sources": list[dict]}.
 Side effects: attempts to construct a CloudAI100Client and call it (a
-real Cloud AI 100 hardware call, once wired); logs a warning and falls
-back to a local templated answer if that fails, so /query keeps working
-before real hardware is wired up.
+real HTTP call to the Cloud AI 100-hosted model, once IMAGINE_API_KEY is
+set); logs a warning and falls back to a local templated answer if that
+fails, so /query keeps working before credentials are provided.
 """
 
 import logging
@@ -72,8 +72,18 @@ def rerank_and_generate(query, query_embedding, candidates, request_logger=None)
     try:
         client = CloudAI100Client()
         answer = generate_answer(query, ranked_sources, client)
-    except Exception as exc:
+    except NotImplementedError as exc:
+        # Expected until CloudAI100Client is wired to real hardware — see
+        # cloud/inference.py. Falling back keeps /query working in the
+        # meantime, so this is a WARNING, not an error.
         log.warning("Cloud AI 100 unavailable, falling back to local templated answer: %s", exc)
+        answer = _template_fallback_answer(query, ranked_sources)
+    except Exception:
+        # Anything else is a real bug (in generate_answer, the client once
+        # it's real, etc.) — log it distinctly, with a traceback, so it
+        # doesn't get silently mislabeled as "hardware not wired up yet".
+        # Still falls back rather than raising, so a live demo survives it.
+        log.exception("Unexpected error generating a Cloud AI 100 answer; falling back to local templated answer")
         answer = _template_fallback_answer(query, ranked_sources)
 
     return {"answer": answer, "ranked_sources": ranked_sources}

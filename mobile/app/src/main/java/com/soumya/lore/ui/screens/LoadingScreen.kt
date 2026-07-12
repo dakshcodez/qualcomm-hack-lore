@@ -32,7 +32,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.soumya.lore.data.awaitMockSearch
 import com.soumya.lore.data.generateKnowledgeGraph
 import com.soumya.lore.data.pathPosition
 import com.soumya.lore.ui.components.KnowledgeGraphCanvas
@@ -70,6 +69,7 @@ private const val LIGHT_UP_TWEEN_MS = 700
 fun LoadingScreen(
     query: String,
     onComplete: () -> Unit,
+    queryViewModel: QueryViewModel,
     modifier: Modifier = Modifier
 ) {
     val graph = remember { generateKnowledgeGraph() }
@@ -108,9 +108,9 @@ fun LoadingScreen(
         graphVisibility.animateTo(1f, tween(450, easing = FastOutSlowInEasing))
 
         // Stage 2: the dot trickles forward — never resetting to the start —
-        // pacing itself entirely off how long the backend actually takes.
-        // Relevant nodes light up (once) as soon as the dot's real progress
-        // reaches their position on the path.
+        // pacing itself entirely off how long the real /query call actually
+        // takes. Relevant nodes light up (once) as soon as the dot's real
+        // progress reaches their position on the path.
         isTraveling = true
         val litNodeIds = mutableSetOf<Int>()
         fun lightDueNodes() {
@@ -131,7 +131,7 @@ fun LoadingScreen(
             }
         }
 
-        awaitMockSearch()
+        queryViewModel.runQuery(query)
 
         // Stage 3: the instant the backend responds, stop trickling and
         // dash straight to the true end of the path — then hand off to a
@@ -244,6 +244,6 @@ fun LoadingScreen(
 @Composable
 private fun LoadingScreenPreview() {
     LoreTheme {
-        LoadingScreen(query = "best hackathons", onComplete = {})
+        LoadingScreen(query = "best hackathons", onComplete = {}, queryViewModel = QueryViewModel())
     }
 }

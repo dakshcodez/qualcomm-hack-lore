@@ -111,6 +111,61 @@ def test_index_file_md_stores_raw_chunk_text(tmp_path, embedder, vector_store):
     assert stored_chunk.startswith("#")  # raw markdown syntax preserved in storage
 
 
+def test_index_file_reindexing_replaces_rather_than_duplicates(tmp_path, embedder, vector_store):
+    path = tmp_path / "notes.txt"
+    path.write_text("original content", encoding="utf-8")
+    index_file(path, embedder, vector_store)
+
+    path.write_text("completely different content now", encoding="utf-8")
+    index_file(path, embedder, vector_store)
+
+    rows = vector_store.text_table.to_arrow().to_pylist()
+    assert vector_store.text_table.count_rows() == len(rows)  # sanity
+    all_chunk_text = " ".join(r["chunk"] for r in rows)
+    assert "original content" not in all_chunk_text
+    assert "completely different content now" in all_chunk_text
+
+
+def test_index_file_reindexing_same_content_does_not_duplicate(tmp_path, embedder, vector_store):
+    path = tmp_path / "notes.txt"
+    path.write_text("stable content", encoding="utf-8")
+
+    first_count = index_file(path, embedder, vector_store)
+    index_file(path, embedder, vector_store)  # no content_hashes passed: still re-indexes...
+
+    # ...but delete-before-insert means row count matches one indexing pass, not two.
+    assert vector_store.text_table.count_rows() == first_count
+
+
+def test_index_file_skips_unchanged_content_when_content_hashes_provided(tmp_path, embedder, vector_store):
+    path = tmp_path / "notes.txt"
+    path.write_text("stable content", encoding="utf-8")
+    content_hashes = {}
+
+    first_count = index_file(path, embedder, vector_store, content_hashes=content_hashes)
+    second_count = index_file(path, embedder, vector_store, content_hashes=content_hashes)
+
+    assert first_count > 0
+    assert second_count == 0  # skipped entirely, no re-embedding
+    assert vector_store.text_table.count_rows() == first_count
+
+
+def test_index_file_content_hashes_still_reindexes_on_real_change(tmp_path, embedder, vector_store):
+    path = tmp_path / "notes.txt"
+    path.write_text("version one", encoding="utf-8")
+    content_hashes = {}
+
+    index_file(path, embedder, vector_store, content_hashes=content_hashes)
+    path.write_text("version two, quite different", encoding="utf-8")
+    second_count = index_file(path, embedder, vector_store, content_hashes=content_hashes)
+
+    assert second_count > 0
+    rows = vector_store.text_table.to_arrow().to_pylist()
+    all_chunk_text = " ".join(r["chunk"] for r in rows)
+    assert "version one" not in all_chunk_text
+    assert "version two" in all_chunk_text
+
+
 # --- Watcher (live watchdog Observer) --------------------------------------
 
 def _wait_until(predicate, timeout=5.0, interval=0.1):
@@ -131,6 +186,30 @@ def test_watcher_indexes_new_supported_file(tmp_path, embedder, vector_store):
         (watch_root / "new_file.txt").write_text("content to be indexed", encoding="utf-8")
         indexed = _wait_until(lambda: vector_store.text_table.count_rows() > 0)
         assert indexed
+    finally:
+        watcher.stop()
+
+
+def test_watcher_does_not_duplicate_rows_when_content_is_unchanged(tmp_path, embedder, vector_store):
+    # Regression test: watchdog fires both on_created and on_modified for a
+    # single save, and re-saving identical content shouldn't grow the index.
+    watch_root = tmp_path / "watched"
+    watch_root.mkdir()
+    watcher = Watcher(watch_root, embedder, vector_store)
+    watcher.start()
+    try:
+        target = watch_root / "notes.txt"
+        target.write_text("same content every time", encoding="utf-8")
+        assert _wait_until(lambda: vector_store.text_table.count_rows() > 0)
+
+        # Give any duplicate on_created/on_modified events time to land,
+        # then re-save the exact same content and confirm no growth.
+        time.sleep(0.5)
+        count_after_first_save = vector_store.text_table.count_rows()
+        target.write_text("same content every time", encoding="utf-8")
+        time.sleep(1.0)
+
+        assert vector_store.text_table.count_rows() == count_after_first_save
     finally:
         watcher.stop()
 

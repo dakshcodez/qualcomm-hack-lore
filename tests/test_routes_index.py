@@ -89,3 +89,18 @@ def test_index_rejects_missing_fields(client):
     test_client, _ = client
     response = test_client.post("/index", json={"text": "content", "url": "https://example.com"})
     assert response.status_code == 422
+
+
+def test_reindexing_same_url_replaces_rather_than_duplicates(client):
+    test_client, app = client
+    payload = {"url": "https://example.com/page", "title": "Page Title"}
+
+    first = test_client.post("/index", json={**payload, "text": "original page content"})
+    second = test_client.post("/index", json={**payload, "text": "the page was edited since"})
+
+    assert first.status_code == 200 and second.status_code == 200
+    rows = app.state.vector_store.text_table.to_arrow().to_pylist()
+    assert app.state.vector_store.text_table.count_rows() == second.json()["chunks_indexed"]
+    all_chunk_text = " ".join(r["chunk"] for r in rows)
+    assert "original page content" not in all_chunk_text
+    assert "the page was edited since" in all_chunk_text

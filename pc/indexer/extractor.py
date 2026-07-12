@@ -14,7 +14,7 @@ Side effects: reads the file from disk.
 from pathlib import Path
 import re
 
-import fitz  # PyMuPDF
+from pypdf import PdfReader
 import openpyxl
 from docx import Document as DocxDocument
 from pptx import Presentation
@@ -39,13 +39,13 @@ def _segment(text, page=None, slide=None, sheet=None, section=None):
 
 
 def extract_pdf(file_path):
-    """Extract one segment per non-empty page. Side effect: opens the PDF via PyMuPDF."""
+    """Extract one segment per non-empty page. Side effect: opens the PDF via pypdf."""
     segments = []
-    with fitz.open(file_path) as doc:
-        for index, page in enumerate(doc):
-            text = page.get_text().strip()
-            if text:
-                segments.append(_segment(text, page=str(index + 1)))
+    reader = PdfReader(file_path)
+    for index, page in enumerate(reader.pages):
+        text = (page.extract_text() or "").strip()
+        if text:
+            segments.append(_segment(text, page=str(index + 1)))
     return segments
 
 

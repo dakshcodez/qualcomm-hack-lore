@@ -5,8 +5,20 @@ __pycache__/
 .pytest_cache/
 *.lance/
 .lancedb/
+lancedb/
+models/
+*.log
 
 # Belt-and-suspenders: mobile/local.properties holds SARVAM_API_KEY and is
 # already excluded by mobile/.gitignore, but keep a root-level rule too so
 # this isn't relying on one nested .gitignore file staying intact.
 local.properties
+
+
+SESSION_SUMMARY.md
+npu_test_2026-07-12_03-18-39_893.json
+npu_test_log.txt
+npu_test_log_utf8.txt
+npu_vanilla_test_2026-07-12_04-34-34_196.json
+npu_vanilla_test_2026-07-12_04-34-53_210.json
+ort_log.txt

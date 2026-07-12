@@ -1,33 +1,32 @@
 package com.soumya.lore.data
 
-/** UI-facing shape of a single retrieved source. Mock content until backend exists. */
-data class Source(
-    val fileName: String,
-    val snippet: String
-)
-
-data class AnswerResult(
-    val answer: String,
-    val sources: List<Source>
-)
-
-/** Temporary stand-in for a real backend call. */
+/**
+ * Preview-only stand-in for a real /query response — used by @Preview
+ * composables so they render without a live PC connection. Real screens
+ * get their AnswerResult from QueryViewModel/LoreApiService instead.
+ */
 fun mockAnswerFor(query: String): AnswerResult = AnswerResult(
     answer = "Based on your indexed files, here's what I found related to " +
         "\"$query\". This is placeholder text until the PC and Cloud AI 100 " +
         "pipeline is connected.",
     sources = listOf(
         Source(
-            fileName = "Q3_Planning_Notes.docx",
-            snippet = "...relevant excerpt mentioning \"$query\" would appear here..."
+            title = "Q3_Planning_Notes.docx",
+            location = "/home/user/Documents/Q3_Planning_Notes.docx",
+            excerpt = "...relevant excerpt mentioning \"$query\" would appear here...",
+            fileType = "docx"
         ),
         Source(
-            fileName = "research-paper.pdf",
-            snippet = "...another matching excerpt would appear here..."
+            title = "research-paper.pdf",
+            location = "/home/user/Documents/research-paper.pdf",
+            excerpt = "...another matching excerpt would appear here...",
+            fileType = "pdf"
         ),
         Source(
-            fileName = "meeting-summary.txt",
-            snippet = "...a third matching excerpt would appear here..."
+            title = "meeting-summary.txt",
+            location = "/home/user/Documents/meeting-summary.txt",
+            excerpt = "...a third matching excerpt would appear here...",
+            fileType = "txt"
         )
     )
 )

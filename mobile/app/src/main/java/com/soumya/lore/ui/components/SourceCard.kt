@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.InsertDriveFile
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.PictureAsPdf
+import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.TextSnippet
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -25,12 +27,20 @@ import androidx.compose.ui.unit.dp
 import com.soumya.lore.data.Source
 import com.soumya.lore.ui.theme.LoreOutline
 
-/** Maps a file's extension to a representative icon. Falls back to a generic file icon. */
-private fun iconForFileName(fileName: String): ImageVector =
-    when (fileName.substringAfterLast('.', "").lowercase()) {
+/**
+ * Maps the backend's authoritative `file_type` (pdf|pptx|docx|xlsx|md|txt|web)
+ * to a representative icon — more reliable than guessing from the title
+ * string, and covers "web" (browser-extension sources), which filename
+ * sniffing had no case for. Falls back to a generic file icon.
+ */
+private fun iconForFileType(fileType: String): ImageVector =
+    when (fileType.lowercase()) {
         "pdf" -> Icons.Outlined.PictureAsPdf
         "doc", "docx" -> Icons.Outlined.Description
+        "ppt", "pptx" -> Icons.Outlined.Description
+        "xls", "xlsx" -> Icons.Outlined.TableChart
         "txt", "md" -> Icons.Outlined.TextSnippet
+        "web" -> Icons.Outlined.Language
         else -> Icons.Outlined.InsertDriveFile
     }
 
@@ -51,19 +61,19 @@ fun SourceCard(source: Source, modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = iconForFileName(source.fileName),
+                imageVector = iconForFileType(source.fileType),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp)
             )
             Column(modifier = Modifier.padding(start = 10.dp)) {
                 Text(
-                    text = source.fileName,
+                    text = source.title,
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = source.snippet,
+                    text = source.excerpt,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

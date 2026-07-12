@@ -1,9 +1,12 @@
 # Phase 3 — Cloud AI 100 dependencies.
 numpy
 
-# The real Qualcomm AI SDK (for talking to the Cloud AI 100 accelerator and
-# running LLaMA 3 8B / Phi-3 mini on it) is proprietary, hardware-specific
-# software — it is not on PyPI and is not declared here. Install it per
-# Qualcomm's on-site instructions on the machine hosting the Cloud AI 100
-# card, then wire it into cloud/inference.py's CloudAI100Client
-# (see the TODOs in that file).
+# cloud/inference.py's CloudAI100Client talks to a Cloud AI 100-hosted
+# model over HTTP via Cirrascale's Imagine SDK (0.4.2). That package is
+# distributed as a wheel file (not published on PyPI), so it can't be
+# declared here as a plain requirement:
+#   pip install imagine_sdk-0.4.2-py3-none-any.whl
+# Download it from https://aisuite.cirrascale.com/sdk/install.html, then
+# set IMAGINE_API_KEY (and optionally IMAGINE_ENDPOINT_URL /
+# IMAGINE_MODEL_NAME) — see cloud/inference.py's docstring and
+# SNAPDRAGON_PC_SETUP.md for the full env-var contract.

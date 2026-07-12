@@ -37,7 +37,7 @@ def query(request: QueryRequest, embedder=Depends(get_embedder), vector_store=De
     logger.info("POST /query text_len=%d modality=%s", len(request.text), request.modality)
 
     embed_start = time.perf_counter()
-    [embedding] = embedder.embed([request.text])
+    [embedding] = embedder.embed([request.text], prefix="query: ")
     embed_ms = (time.perf_counter() - embed_start) * 1000
     logger.debug("Embedding took %.2fms", embed_ms)
 
