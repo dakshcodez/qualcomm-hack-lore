@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.soumya.lore.audio.AudioRecorder
+import com.soumya.lore.data.RecentSearchesStore
 import com.soumya.lore.data.SpeechResult
 import com.soumya.lore.network.SarvamService
 import java.io.IOException
@@ -21,6 +22,9 @@ private const val WAVEFORM_POLL_INTERVAL_MS = 80L
 
 /** MediaRecorder.getMaxAmplitude() ranges roughly 0..32767 for AAC. */
 private const val MAX_RECORDER_AMPLITUDE = 32_767f
+
+/** Older entries beyond this are dropped rather than kept growing forever. */
+private const val MAX_RECENT_SEARCHES = 20
 
 /** Everything HomeScreen needs to know about voice input — nothing more. */
 sealed class VoiceState {
@@ -40,6 +44,7 @@ sealed class VoiceState {
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val audioRecorder = AudioRecorder(application.applicationContext)
+    private val recentSearchesStore = RecentSearchesStore(application.applicationContext)
 
     private val _voiceState = MutableStateFlow<VoiceState>(VoiceState.Idle)
     val voiceState: StateFlow<VoiceState> = _voiceState.asStateFlow()
@@ -48,7 +53,26 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _waveformLevels = MutableStateFlow(List(WAVEFORM_BAR_COUNT) { 0f })
     val waveformLevels: StateFlow<List<Float>> = _waveformLevels.asStateFlow()
 
+    /** Real search history — most recent first. Loaded once at construction. */
+    private val _recentSearches = MutableStateFlow(recentSearchesStore.load())
+    val recentSearches: StateFlow<List<String>> = _recentSearches.asStateFlow()
+
     private var waveformJob: Job? = null
+
+    /**
+     * Records a submitted search. Re-running an existing search (including
+     * tapping a Recent Searches chip) bumps it to the top instead of
+     * creating a duplicate entry; case-insensitive so "Lore" and "lore"
+     * count as the same search.
+     */
+    fun recordSearch(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return
+        val updated = (listOf(trimmed) + _recentSearches.value.filterNot { it.equals(trimmed, ignoreCase = true) })
+            .take(MAX_RECENT_SEARCHES)
+        _recentSearches.value = updated
+        recentSearchesStore.save(updated)
+    }
 
     /** Call when the mic button is tapped while the permission is already granted. */
     fun onMicPressed() {

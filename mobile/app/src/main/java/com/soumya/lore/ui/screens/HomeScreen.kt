@@ -47,7 +47,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.soumya.lore.data.recentSearches
 import com.soumya.lore.ui.components.LoadMoreRow
 import com.soumya.lore.ui.components.LoreSearchField
 import com.soumya.lore.ui.components.RecentSearchChip
@@ -76,6 +75,7 @@ fun HomeScreen(
     var visibleRecentCount by remember { mutableIntStateOf(RECENT_SEARCHES_PAGE_SIZE) }
     val voiceState by viewModel.voiceState.collectAsStateWithLifecycle()
     val waveformLevels by viewModel.waveformLevels.collectAsStateWithLifecycle()
+    val recentSearches by viewModel.recentSearches.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -94,6 +94,7 @@ fun HomeScreen(
     fun triggerSearch(submittedQuery: String) {
         if (isTransitioning || submittedQuery.isBlank()) return
         isTransitioning = true
+        viewModel.recordSearch(submittedQuery)
         scope.launch {
             coroutineScope {
                 launch { fieldScale.animateTo(0.95f, tween(350, easing = FastOutSlowInEasing)) }
