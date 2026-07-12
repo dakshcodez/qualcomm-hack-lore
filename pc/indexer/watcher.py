@@ -10,6 +10,7 @@ writes to LanceDB via VectorStore.upsert_chunks(); logs pipeline progress.
 
 import hashlib
 import logging
+import time
 from pathlib import Path
 
 from watchdog.events import FileSystemEventHandler
@@ -18,7 +19,7 @@ from watchdog.observers import Observer
 from pc.indexer import chunker, extractor
 from pc.indexer.extractor import UnsupportedFileTypeError
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(f"lore.{__name__}")
 
 # Configurable — flagged per CLAUDE.md as "reasonable exclusions... flag
 # this as configurable". Callers can override via excluded_dir_names.
@@ -88,12 +89,28 @@ def index_file(file_path, embedder, vector_store, source="filesystem", content_h
         logger.debug("Skipping unsupported file type: %s", file_path)
         return 0
 
-    try:
-        segments = extractor.extract(file_path)
-    except UnsupportedFileTypeError:
-        return 0
-    except Exception:
-        logger.exception("Extraction failed for %s", file_path)
+    # Downloaded/moved files are often momentarily unreadable right after
+    # the watchdog event fires — e.g. OneDrive sync or Windows Defender
+    # briefly touching a just-renamed file — so a bare FileNotFoundError/
+    # PermissionError right after create/move is usually transient, not a
+    # real failure. Retry a few times with a short backoff before giving up.
+    segments = None
+    last_error = None
+    for attempt in range(5):
+        try:
+            segments = extractor.extract(file_path)
+            last_error = None
+            break
+        except UnsupportedFileTypeError:
+            return 0
+        except (FileNotFoundError, PermissionError) as exc:
+            last_error = exc
+            time.sleep(0.3 * (attempt + 1))
+        except Exception:
+            logger.exception("Extraction failed for %s", file_path)
+            return 0
+    if last_error is not None:
+        logger.warning("Extraction failed for %s after retries: %s", file_path, last_error)
         return 0
 
     if not segments:
@@ -146,11 +163,12 @@ def index_file(file_path, embedder, vector_store, source="filesystem", content_h
 
 
 class _IndexingEventHandler(FileSystemEventHandler):
-    def __init__(self, root, embedder, vector_store, excluded_dir_names):
+    def __init__(self, root, embedder, vector_store, excluded_dir_names, excluded_paths=()):
         self.root = Path(root)
         self.embedder = embedder
         self.vector_store = vector_store
         self.excluded_dir_names = excluded_dir_names
+        self.excluded_paths = excluded_paths
         # Per-location content hash cache, so watchdog's duplicate
         # on_created+on_modified events for a single save don't each
         # trigger a full re-embed — see index_file()'s content_hashes arg.
@@ -160,6 +178,20 @@ class _IndexingEventHandler(FileSystemEventHandler):
         path = Path(path)
         if path.is_dir():
             return
+        # Checked (and skipped silently) before the logged exclusion path
+        # below: logging about one of these paths would itself be a write
+        # to that same path (e.g. our own log file), re-triggering this
+        # handler — logging it would just re-create the loop it's dodging.
+        # Only applies when `excluded` actually sits inside self.root —
+        # otherwise (e.g. it's an unrelated directory that merely happens
+        # to be an ancestor of self.root) every watched path would trivially
+        # have it as a parent too, excluding everything.
+        for excluded in self.excluded_paths:
+            excluded = Path(excluded)
+            if excluded != self.root and self.root not in excluded.parents:
+                continue
+            if path == excluded or excluded in path.parents:
+                return
         if is_excluded(path, self.root, self.excluded_dir_names):
             logger.debug("Excluded path, skipping: %s", path)
             return
@@ -173,15 +205,23 @@ class _IndexingEventHandler(FileSystemEventHandler):
         if not event.is_directory:
             self._maybe_index(event.src_path)
 
+    def on_moved(self, event):
+        # Browsers (and many other downloaders) write to a temp file, then
+        # rename it to the final filename on completion — a "moved" event,
+        # not "created"/"modified". Without this, downloaded files are
+        # never indexed.
+        if not event.is_directory:
+            self._maybe_index(event.dest_path)
+
 
 class Watcher:
     """Recursively watches `root` for created/modified files, indexing
     supported, non-excluded files through the extractor->chunker->embedder->
     vector_store pipeline."""
 
-    def __init__(self, root, embedder, vector_store, excluded_dir_names=DEFAULT_EXCLUDED_DIR_NAMES):
+    def __init__(self, root, embedder, vector_store, excluded_dir_names=DEFAULT_EXCLUDED_DIR_NAMES, excluded_paths=()):
         self.root = Path(root)
-        self.handler = _IndexingEventHandler(self.root, embedder, vector_store, excluded_dir_names)
+        self.handler = _IndexingEventHandler(self.root, embedder, vector_store, excluded_dir_names, excluded_paths)
         self.observer = Observer()
 
     def start(self):

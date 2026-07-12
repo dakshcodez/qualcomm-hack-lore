@@ -5,7 +5,30 @@
       "Bash(node --test tests/background.test.js)",
       "Bash(cp background.js background.js.bak)",
       "Bash(sed -i 's#http://localhost:8000/index#http://localhost:8000/index/web#; s#const body = { text: pageData.content, url: pageData.url, title: pageData.title };#const body = pageData;#' background.js)",
-      "Bash(mv background.js.bak background.js)"
+      "Bash(mv background.js.bak background.js)",
+      "Bash(tasklist)",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(./.venv_x64/Scripts/python.exe -m pytest tests/test_watcher.py tests/test_run_indexer.py -q)",
+      "Bash(netstat -ano)",
+      "PowerShell(Get-Command python -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source; Get-Command python3 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source; $PSVersionTable.PSVersion)",
+      "Bash(node -e \"\")",
+      "Bash(python3 -)",
+      "Bash(.venv_x64/Scripts/python.exe --version)",
+      "Bash(.venv_x64/Scripts/python.exe -c \"import lancedb, pyarrow, fastapi, onnxruntime; print\\('lancedb', lancedb.__version__\\); print\\('pyarrow', pyarrow.__version__\\); print\\('fastapi', fastapi.__version__\\); print\\('onnxruntime', onnxruntime.__version__\\)\")",
+      "Bash(.venv_x64/Scripts/python.exe -m pytest tests/ -q)",
+      "Bash(IMAGINE_API_KEY=376cc1a0-95c3-4623-a983-3cd4ab4339ed IMAGINE_ENDPOINT_URL=https://aisuite.cirrascale.com/apis/v2 .venv_x64/Scripts/python.exe -c ' *)",
+      "Bash(rm -f lore.log)",
+      "Bash(nohup ./run_watcher.ps1)",
+      "Bash(echo \"started watcher pid $!\")",
+      "Bash(sleep 2 && cat /tmp/watcher_out.log 2>&1)",
+      "Read(//tmp/**)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,State,OwningProcess | Format-Table -AutoSize; Get-Process -Id \\(Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue\\).OwningProcess -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,Path,StartTime)",
+      "Bash(curl -s -m 5 http://localhost:8000/docs -o /dev/null -w \"docs status: %{http_code}\\\\n\")",
+      "Bash(curl -s -m 8 -X POST http://localhost:8000/query -H \"Content-Type: application/json\" -d '{\"text\": \"test query\", \"modality\": \"text\"}' -w \"\\\\nquery status: %{http_code}\\\\n\")",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name = 'python.exe'\")",
+      "Bash(.venv_x64/Scripts/python.exe -c ' *)",
+      "Bash(.venv_x64/Scripts/python.exe -m pytest tests/test_vector_store.py tests/test_routes_query.py tests/test_e2e.py -q)",
+      "PowerShell(Set-Location \"c:\\\\Users\\\\qcwor\\\\Documents\\\\qualcomm-hack-lore\\\\mobile\"; $env:JAVA_HOME = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\"; & .\\\\gradlew.bat assembleDebug --console=plain 2>&1 | Select-Object -Last 40)"
     ]
   }
 }

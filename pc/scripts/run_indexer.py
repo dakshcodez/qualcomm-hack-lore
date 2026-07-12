@@ -23,6 +23,7 @@ tables, and starts a watchdog Observer thread that runs until interrupted
 import os
 import sys
 import time
+from pathlib import Path
 
 from pc.api.logging_config import configure_logging
 from pc.indexer.embedder import Embedder
@@ -47,10 +48,17 @@ def build_watcher():
     lancedb_path = os.environ.get("LANCEDB_PATH", DEFAULT_LANCEDB_PATH)
     embedding_dim = int(os.environ.get("EMBEDDING_DIM", DEFAULT_EMBEDDING_DIM))
     watch_root = os.environ.get("WATCH_ROOT", os.path.expanduser("~"))
+    log_file = os.environ.get("LOG_FILE", DEFAULT_LOG_FILE)
 
     embedder = Embedder(model_path)
     vector_store = VectorStore(lancedb_path, embedding_dim=embedding_dim)
-    return Watcher(watch_root, embedder, vector_store)
+
+    # If this project's own log file/LanceDB directory happen to live inside
+    # watch_root (e.g. the repo sits under the user's home folder), writing
+    # to them would otherwise re-trigger the watcher on every write — an
+    # infinite self-referential loop. Exclude them explicitly.
+    excluded_paths = [Path(lancedb_path).resolve(), Path(log_file).resolve().parent]
+    return Watcher(watch_root, embedder, vector_store, excluded_paths=excluded_paths)
 
 
 def main():

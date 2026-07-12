@@ -1,5 +1,6 @@
 .env
 .venv/
+.venv_x64/
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -28,3 +29,11 @@ npu_test_log_utf8.txt
 npu_vanilla_test_2026-07-12_04-34-34_196.json
 npu_vanilla_test_2026-07-12_04-34-53_210.json
 ort_log.txt
+imagine_sdk-0.4.2-py3-none-any.whl
+lancedb_corrupted_backup/
+lore.log.1
+mobile/.idea/codeStyles/
+run_backend.ps1
+run_watcher.ps1
+tests/README.md
+tests/test_e2e.py
