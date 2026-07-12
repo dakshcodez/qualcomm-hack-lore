@@ -66,9 +66,8 @@ fun AppNavigation() {
             route = RESULT_ROUTE,
             arguments = listOf(navArgument(QUERY_ARG) { type = NavType.StringType }),
             // Fast, minimal fade rather than the default slide/crossfade —
-            // the Loading screen already ends on a static card silhouette
-            // matching Result's AnswerCard, so this should read as a
-            // continuation of that animation, not a screen change.
+            // Loading's own node fades out right before this fires, so a
+            // quick fade reads as a continuation rather than a hard cut.
             enterTransition = { fadeIn(tween(120)) },
             exitTransition = { fadeOut(tween(80)) }
         ) { backStackEntry ->

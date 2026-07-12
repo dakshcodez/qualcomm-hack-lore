@@ -11,6 +11,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -55,8 +56,8 @@ import com.soumya.lore.ui.theme.LoreTheme
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
-private const val RECENT_SEARCHES_PAGE_SIZE = 4
-private val RECENT_SEARCHES_CHIP_HEIGHT = 44.dp
+private const val RECENT_SEARCHES_PAGE_SIZE = 3
+private val RECENT_SEARCHES_CHIP_HEIGHT = 36.dp
 private val RECENT_SEARCHES_CHIP_SPACING = 8.dp
 
 /**
@@ -159,13 +160,18 @@ fun HomeScreen(
             }
 
             // --- Main search area (fills remaining space, centered) ---
+            // Uses explicit weighted spacers (not Arrangement.Center) so the
+            // vertical bias is a direct, tunable number — Arrangement.Center
+            // alone centers within this Column's own allotted space, which
+            // sits slightly above true screen-center since the recent
+            // searches block below is still taller than the header above.
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                Spacer(modifier = Modifier.weight(0.58f))
                 Box(contentAlignment = Alignment.Center) {
                     LoreSearchField(
                         value = query,
@@ -225,13 +231,14 @@ fun HomeScreen(
                 ) {
                     Text("Search")
                 }
+                Spacer(modifier = Modifier.weight(0.42f))
             }
 
             // --- Recent searches + footer ---
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 40.dp)
+                    .padding(bottom = 20.dp)
             ) {
                 Text(
                     text = "Recent Searches",
@@ -276,7 +283,7 @@ fun HomeScreen(
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 20.dp)
+                        .padding(top = 10.dp)
                 )
             }
         }

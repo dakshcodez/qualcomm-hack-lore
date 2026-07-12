@@ -32,7 +32,7 @@ fun RecentSearchChip(label: String, onClick: () -> Unit, modifier: Modifier = Mo
         border = BorderStroke(1.dp, LoreOutline)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(

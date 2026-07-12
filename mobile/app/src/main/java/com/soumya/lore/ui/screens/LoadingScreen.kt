@@ -5,13 +5,13 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -23,23 +23,27 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soumya.lore.data.generateKnowledgeGraph
 import com.soumya.lore.data.pathPosition
 import com.soumya.lore.ui.components.KnowledgeGraphCanvas
-import com.soumya.lore.ui.theme.LoreOutline
 import com.soumya.lore.ui.theme.LoreTheme
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /** The graph canvas sits on a near-black background distinct from the rest of the app. */
@@ -62,8 +66,8 @@ private const val LIGHT_UP_TWEEN_MS = 700
  * Three-stage retrieval visualization: the query detaches from Home and
  * enters as a node (continuation of Home's own detach animation), travels
  * a knowledge graph while a few nodes light up as relevant matches, then
- * contracts back into a single node that expands into the shape of the
- * answer card right before navigating to Results.
+ * the node grows into a soft glow and fades out, handing off directly to
+ * Results with no intermediate card silhouette.
  */
 @Composable
 fun LoadingScreen(
@@ -80,27 +84,53 @@ fun LoadingScreen(
     // fully morphed into a node. Also doubles as the Stage 3 fade-out.
     val graphVisibility = remember { Animatable(0f) }
     val capsuleAlpha = remember { Animatable(1f) }
+    // Pixel-space translation applied on top of the capsule's normal layout
+    // position. The actual target is computed from real measurements (see
+    // below) rather than guessed, so this starts at zero and only animates
+    // once the true delta to the dot's starting point is known.
+    val capsuleTranslate = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+    val capsuleScale = remember { Animatable(1f) }
     val queryAlpha = remember { Animatable(0f) }
     val queryRadius = remember { Animatable(4.5f) }
-    val cardAlpha = remember { Animatable(0f) }
     val lapProgress = remember { Animatable(0f) }
     var isTraveling by remember { mutableStateOf(false) }
+    // The dot no longer flies in on its own — it simply appears at the
+    // path's start once the capsule arrives there, so it reads as the
+    // capsule handing off to it rather than two things converging.
     val queryPosition = remember {
-        Animatable(Offset(-0.12f, graph.travelWaypoints.first().y), Offset.VectorConverter)
+        Animatable(graph.travelWaypoints.first(), Offset.VectorConverter)
     }
 
+    // Real measurements, captured via onGloballyPositioned below, so the
+    // capsule's flight target is the dot's *actual* on-screen starting
+    // point — not a guessed nudge.
+    var graphBoxPositionPx by remember { mutableStateOf<Offset?>(null) }
+    var graphBoxSizePx by remember { mutableStateOf<IntSize?>(null) }
+    var capsulePositionPx by remember { mutableStateOf<Offset?>(null) }
+
     LaunchedEffect(query) {
-        // Stage 1 continuation: the capsule that arrived from Home morphs
-        // smoothly (crossfade, not a hard cut) into the glowing query node.
+        // Wait for the first real layout pass so the geometry below is accurate.
+        snapshotFlow { Triple(graphBoxPositionPx, graphBoxSizePx, capsulePositionPx) }
+            .first { (pos, size, capsulePos) -> pos != null && size != null && capsulePos != null }
+
+        val graphOrigin = graphBoxPositionPx!!
+        val graphSize = graphBoxSizePx!!
+        val startFraction = graph.travelWaypoints.first()
+        val targetPointInRoot = Offset(
+            graphOrigin.x + startFraction.x * graphSize.width,
+            graphOrigin.y + startFraction.y * graphSize.height
+        )
+        val flightDelta = targetPointInRoot - capsulePositionPx!!
+
+        // Stage 1 continuation: the capsule that arrived from Home flies
+        // fast toward the dot's actual starting point, shrinking as it
+        // goes, and disappears there — replaced by the glowing query node,
+        // rather than crossfading in place.
         coroutineScope {
-            launch { capsuleAlpha.animateTo(0f, tween(350, easing = FastOutSlowInEasing)) }
-            launch { queryAlpha.animateTo(1f, tween(400, easing = FastOutSlowInEasing)) }
-            launch {
-                queryPosition.animateTo(
-                    graph.travelWaypoints.first(),
-                    tween(450, easing = FastOutSlowInEasing)
-                )
-            }
+            launch { capsuleTranslate.animateTo(flightDelta, tween(300, easing = FastOutSlowInEasing)) }
+            launch { capsuleScale.animateTo(0.15f, tween(300, easing = FastOutSlowInEasing)) }
+            launch { capsuleAlpha.animateTo(0f, tween(300, easing = FastOutSlowInEasing)) }
+            launch { queryAlpha.animateTo(1f, tween(220, delayMillis = 160, easing = FastOutSlowInEasing)) }
         }
 
         // Only now — after the node has fully formed — does the graph fade
@@ -136,9 +166,8 @@ fun LoadingScreen(
         // Stage 3: the instant the backend responds, stop trickling and
         // dash straight to the true end of the path — then hand off to a
         // deliberate move toward center, fade the graph away, grow the node
-        // into a glow, and crossfade into a static card silhouette before
-        // navigating, so the real Results screen lands on an already-settled
-        // shape instead of a mid-motion one.
+        // into a glow, and fade the node itself out — navigating straight
+        // to Results right after, with no intermediate card silhouette.
         trickleJob.cancel()
         coroutineScope {
             launch { lapProgress.animateTo(1f, tween(FAST_ARRIVAL_TWEEN_MS, easing = FastOutSlowInEasing)) }
@@ -159,10 +188,7 @@ fun LoadingScreen(
             launch { queryRadius.animateTo(170f, tween(500, easing = FastOutSlowInEasing)) }
             launch { nodeGlow.map { async { it.animateTo(0f, tween(400)) } }.awaitAll() }
         }
-        coroutineScope {
-            launch { queryAlpha.animateTo(0f, tween(220)) }
-            launch { cardAlpha.animateTo(1f, tween(220)) }
-        }
+        queryAlpha.animateTo(0f, tween(220))
 
         onComplete()
     }
@@ -193,7 +219,15 @@ fun LoadingScreen(
                 )
             }
 
-            Box(modifier = Modifier.weight(1f).fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxSize()
+                    .onGloballyPositioned {
+                        graphBoxPositionPx = it.positionInRoot()
+                        graphBoxSizePx = it.size
+                    }
+            ) {
                 KnowledgeGraphCanvas(
                     graph = graph,
                     nodeGlow = nodeGlow,
@@ -211,9 +245,21 @@ fun LoadingScreen(
                     color = MaterialTheme.colorScheme.surface,
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = 24.dp)
-                        .graphicsLayer { alpha = capsuleAlpha.value }
+                        // Spawns near screen-center, mirroring where the
+                        // capsule sat on Home's search field — deliberately
+                        // NOT near travelWaypoints.first() (which sits close
+                        // to the left edge), so there's real distance to fly.
+                        // Shifted up 100dp from true center per request.
+                        .align(Alignment.Center)
+                        .offset(y = (-100).dp)
+                        .onGloballyPositioned { capsulePositionPx = it.positionInRoot() }
+                        .graphicsLayer {
+                            translationX = capsuleTranslate.value.x
+                            translationY = capsuleTranslate.value.y
+                            scaleX = capsuleScale.value
+                            scaleY = capsuleScale.value
+                            alpha = capsuleAlpha.value
+                        }
                 ) {
                     Text(
                         text = query,
@@ -223,18 +269,6 @@ fun LoadingScreen(
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp)
                     )
                 }
-
-                Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, LoreOutline),
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .height(140.dp)
-                        .graphicsLayer { alpha = cardAlpha.value }
-                ) {}
             }
         }
     }
