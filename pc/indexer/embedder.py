@@ -171,12 +171,28 @@ class Embedder:
             prefixed_texts = [f"{prefix}{t}" for t in texts]
             # Encode with BOS token (Gemma BOS token ID is 2)
             input_ids = [[2] + self.sp_processor.EncodeAsIds(text) for text in prefixed_texts]
-            max_len = max(len(seq) for seq in input_ids)
+
+            # Check if model has fixed input shape (QNN requires static dims)
+            input_id_shape = None
+            for inp in inputs:
+                if inp.name == "input_ids":
+                    input_id_shape = inp.shape
+                    break
+
+            # Determine target sequence length
+            if input_id_shape and len(input_id_shape) >= 2 and isinstance(input_id_shape[1], int):
+                # Fixed-shape model (e.g., QNN-compatible with SEQ_LEN=128)
+                target_len = input_id_shape[1]
+            else:
+                # Dynamic-shape model — pad to longest in batch
+                target_len = max(len(seq) for seq in input_ids)
 
             padded_input_ids = []
             attention_mask = []
             for seq in input_ids:
-                pad_len = max_len - len(seq)
+                if len(seq) > target_len:
+                    seq = seq[:target_len]
+                pad_len = target_len - len(seq)
                 padded_input_ids.append(seq + [0] * pad_len)
                 attention_mask.append([1] * len(seq) + [0] * pad_len)
 
@@ -184,6 +200,8 @@ class Embedder:
                 "input_ids": np.array(padded_input_ids, dtype=np.int64),
                 "attention_mask": np.array(attention_mask, dtype=np.int64)
             }
+            # Store attention mask for potential mean-pooling
+            attn_mask_np = feed["attention_mask"]
         else:
             # Toy/smoke model mode
             input_meta = inputs[0]
@@ -191,6 +209,7 @@ class Embedder:
             if not isinstance(input_dim, int):
                 raise ValueError(f"Model input's last dimension must be static, got shape {input_meta.shape}")
             feed = {input_meta.name: self.preprocess_fn(texts, input_dim)}
+            attn_mask_np = None
 
         outputs = self.session.get_outputs()
         output_names = [o.name for o in outputs]
@@ -200,6 +219,18 @@ class Embedder:
             output_name = outputs[0].name
 
         with self.profiler.track(self.active_provider):
-            outputs = self.session.run([output_name], feed)
+            raw_outputs = self.session.run([output_name], feed)
 
-        return outputs[0].tolist()
+        result = raw_outputs[0]
+
+        # If output is 3D [batch, seq_len, hidden_dim], apply mean pooling
+        # (vanilla ONNX export outputs last_hidden_state, not sentence_embedding)
+        if result.ndim == 3 and attn_mask_np is not None:
+            # Attention-mask-aware mean pooling: average only non-padding tokens
+            mask_expanded = attn_mask_np[:, :, np.newaxis].astype(np.float32)  # [B, S, 1]
+            masked = result * mask_expanded  # zero out padding positions
+            summed = masked.sum(axis=1)  # [B, hidden]
+            counts = mask_expanded.sum(axis=1).clip(min=1e-9)  # [B, 1]
+            result = summed / counts  # [B, hidden]
+
+        return result.tolist()

@@ -72,7 +72,11 @@ class DirectoryCalibrationDataReader(CalibrationDataReader):
                 prefixed_sentences = [f"document: {s}" for s in sentences]
                 for idx, text in enumerate(prefixed_sentences):
                     ids = [2] + sp.EncodeAsIds(text)
-                    mask = [1] * len(ids)
+                    if len(ids) > 128:
+                        ids = ids[:128]
+                    pad_len = 128 - len(ids)
+                    ids = ids + [0] * pad_len
+                    mask = [1] * (128 - pad_len) + [0] * pad_len
                     np.save(self.calibration_dir / f"sample_{idx}_input_ids.npy", np.array([ids], dtype=np.int64))
                     np.save(self.calibration_dir / f"sample_{idx}_attention_mask.npy", np.array([mask], dtype=np.int64))
 
