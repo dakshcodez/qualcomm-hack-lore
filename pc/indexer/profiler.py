@@ -13,7 +13,7 @@ import time
 from collections import Counter
 from contextlib import contextmanager
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(f"lore.{__name__}")
 
 PROVIDER_TO_BACKEND = {
     "QNNExecutionProvider": "NPU",
