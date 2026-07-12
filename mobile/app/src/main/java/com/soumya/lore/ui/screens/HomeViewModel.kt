@@ -7,10 +7,20 @@ import com.soumya.lore.audio.AudioRecorder
 import com.soumya.lore.data.SpeechResult
 import com.soumya.lore.network.SarvamService
 import java.io.IOException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+/** How many bars the waveform shows — a fixed-size rolling window. */
+private const val WAVEFORM_BAR_COUNT = 28
+private const val WAVEFORM_POLL_INTERVAL_MS = 80L
+
+/** MediaRecorder.getMaxAmplitude() ranges roughly 0..32767 for AAC. */
+private const val MAX_RECORDER_AMPLITUDE = 32_767f
 
 /** Everything HomeScreen needs to know about voice input — nothing more. */
 sealed class VoiceState {
@@ -33,6 +43,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _voiceState = MutableStateFlow<VoiceState>(VoiceState.Idle)
     val voiceState: StateFlow<VoiceState> = _voiceState.asStateFlow()
+
+    /** Rolling window of normalized (0f..1f) amplitude samples, most recent last. */
+    private val _waveformLevels = MutableStateFlow(List(WAVEFORM_BAR_COUNT) { 0f })
+    val waveformLevels: StateFlow<List<Float>> = _waveformLevels.asStateFlow()
+
+    private var waveformJob: Job? = null
 
     /** Call when the mic button is tapped while the permission is already granted. */
     fun onMicPressed() {
@@ -61,12 +77,20 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         try {
             audioRecorder.start()
             _voiceState.value = VoiceState.Recording
+            waveformJob = viewModelScope.launch {
+                while (true) {
+                    delay(WAVEFORM_POLL_INTERVAL_MS)
+                    val normalized = (audioRecorder.currentAmplitude() / MAX_RECORDER_AMPLITUDE).coerceIn(0f, 1f)
+                    _waveformLevels.update { it.drop(1) + normalized }
+                }
+            }
         } catch (e: IOException) {
             _voiceState.value = VoiceState.Error("Couldn't start recording. Try again.")
         }
     }
 
     private fun stopAndTranscribe() {
+        stopWaveformPolling()
         val file = audioRecorder.stop()
         if (file == null) {
             _voiceState.value = VoiceState.Error("Recording was too short — try again.")
@@ -83,7 +107,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun stopWaveformPolling() {
+        waveformJob?.cancel()
+        waveformJob = null
+        _waveformLevels.value = List(WAVEFORM_BAR_COUNT) { 0f }
+    }
+
     override fun onCleared() {
+        stopWaveformPolling()
         audioRecorder.cancel()
         super.onCleared()
     }

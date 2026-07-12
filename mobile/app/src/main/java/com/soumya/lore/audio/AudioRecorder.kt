@@ -61,6 +61,17 @@ class AudioRecorder(private val context: Context) {
         }
     }
 
+    /**
+     * Peak amplitude (0..32767 roughly) since the last call — MediaRecorder's
+     * own running max, reset on each read. Returns 0 when not recording.
+     * Used to drive the live waveform; not persisted anywhere.
+     */
+    fun currentAmplitude(): Int = try {
+        recorder?.maxAmplitude ?: 0
+    } catch (_: IllegalStateException) {
+        0
+    }
+
     /** Cancels an in-progress recording without producing a result (e.g. user backs out). */
     fun cancel() {
         try {
