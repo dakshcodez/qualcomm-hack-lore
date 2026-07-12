@@ -27,7 +27,7 @@ import onnxruntime as ort
 
 from pc.indexer.profiler import DEFAULT_PROVIDER_PREFERENCE, InferenceProfiler
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(f"lore.{__name__}")
 
 
 class ExecutionProviderUnavailableError(RuntimeError):
@@ -142,13 +142,43 @@ class Embedder:
         Returns:
             list[list[float]], one embedding vector per input text, in order.
             [] if texts is empty.
-        Side effects: runs ONNX Runtime inference; records latency + active
+        Side effects: runs ONNX Runtime inference (one call per batch_size()-sized
+            slice of texts — see batch_size()); records latency + active
             provider via self.profiler (which logs WARNING on silent
-            fallback away from the top-preference provider).
+            fallback away from the top-preference provider) for each such call.
         """
         if not texts:
             return []
 
+        batch_size = self.batch_size()
+        if len(texts) <= batch_size:
+            return self._embed_batch(texts, prefix)
+
+        results = []
+        for i in range(0, len(texts), batch_size):
+            results.extend(self._embed_batch(texts[i:i + batch_size], prefix))
+        return results
+
+    def batch_size(self):
+        """The largest number of texts embed() may feed the session in one
+        ONNX Runtime call. Models quantized for QNN commonly pin every
+        input dimension (including batch) to a static size — feeding more
+        texts than that at once raises an ONNX Runtime shape-mismatch error
+        (seen as "Got invalid dimensions ... index: 0"), so embed() must
+        split into single-batch-sized calls instead when this is fixed.
+
+        Returns:
+            The model's static batch dimension (an int) if fixed, else a
+            value >= any realistic input length (i.e. "unbounded").
+        """
+        for inp in self.session.get_inputs():
+            if inp.name in ("input_ids", "attention_mask") and inp.shape and isinstance(inp.shape[0], int):
+                return inp.shape[0]
+        return 2 ** 31
+
+    def _embed_batch(self, texts, prefix):
+        """Run one ONNX Runtime inference call over texts (must fit within
+        batch_size()). Side effects: as embed()'s, for this one call."""
         # Check model inputs to see if we're in real Gemma mode (expects input_ids/attention_mask)
         # or toy/smoke mode (expects a single vector).
         inputs = self.session.get_inputs()

@@ -72,7 +72,7 @@ def test_fallback_is_logged_as_a_warning_via_profiler(toy_model_path, caplog):
         toy_model_path,
         preferred_providers=["QNNExecutionProvider", "CPUExecutionProvider"],
     )
-    with caplog.at_level(logging.WARNING, logger="pc.indexer.profiler"):
+    with caplog.at_level(logging.WARNING, logger="lore.pc.indexer.profiler"):
         embedder.embed(["trigger a profiled inference"])
 
     assert "fell back" in caplog.text
@@ -86,10 +86,11 @@ def test_no_fallback_warning_when_cpu_is_the_only_preference(toy_model_path, cap
     import logging
 
     embedder = Embedder(toy_model_path, preferred_providers=["CPUExecutionProvider"])
-    with caplog.at_level(logging.WARNING, logger="pc.indexer.profiler"):
+    with caplog.at_level(logging.DEBUG, logger="lore.pc.indexer.profiler"):
         embedder.embed(["no fallback expected here"])
 
-    assert caplog.text == ""
+    assert "fell back" not in caplog.text
+    assert not any(record.levelno == logging.WARNING for record in caplog.records)
     assert embedder.profiler.summary()["any_fallback"] is False
 
 

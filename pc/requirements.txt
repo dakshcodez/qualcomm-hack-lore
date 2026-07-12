@@ -6,10 +6,17 @@ python-pptx
 openpyxl
 onnxruntime
 onnx
+sentencepiece
 
-# onnxruntime-qnn only ships wheels for Windows ARM64 (the real Snapdragon X
-# Copilot+ PC). It cannot be installed on other platforms, so it is left out
-# here — install it separately on the target hardware:
+# lancedb/pyarrow (pylance, its Rust core) publish wheels only for Windows
+# x64, not Windows ARM64 — install/run this project's watcher and API under
+# an x64 Python (e.g. .venv_x64), even on an ARM64 Snapdragon PC.
+lancedb
+pyarrow
+
+# onnxruntime-qnn also installs under x64 Python, but whether the QNN/Hexagon
+# NPU backend actually initializes under x64 emulation (vs. a native ARM64
+# process) is unverified — falls back to CPU either way if not:
 #   pip install onnxruntime-qnn
 
 # Phase 2 — backend API dependencies.
