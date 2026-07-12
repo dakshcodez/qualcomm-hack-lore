@@ -11,6 +11,55 @@ def test_empty_candidates_returns_no_results_message():
     assert "No relevant results" in result["answer"]
 
 
+def test_empty_candidates_with_working_client_answers_generally_instead(monkeypatch):
+    # Nothing indexed/matched shouldn't be a dead end when Cloud AI 100 is
+    # actually available — it should answer from general knowledge instead
+    # of just reporting "no relevant results".
+    class FakeWorkingClient:
+        def generate(self, prompt):
+            return "The Eiffel Tower is in Paris, France."
+
+    monkeypatch.setattr(cloud_client, "CloudAI100Client", FakeWorkingClient)
+
+    result = rerank_and_generate("where is the eiffel tower", [1.0, 0.0], [])
+
+    assert result["ranked_sources"] == []
+    assert result["answer"] == "The Eiffel Tower is in Paris, France."
+
+
+def test_empty_candidates_general_answer_uses_the_general_prompt(monkeypatch):
+    received_prompts = []
+
+    class FakeWorkingClient:
+        def generate(self, prompt):
+            received_prompts.append(prompt)
+            return "some answer"
+
+    monkeypatch.setattr(cloud_client, "CloudAI100Client", FakeWorkingClient)
+
+    rerank_and_generate("some question", [1.0, 0.0], [])
+
+    assert len(received_prompts) == 1
+    # Not the grounded/citation-restricted prompt used when there are sources.
+    assert "ONLY the sources below" not in received_prompts[0]
+    assert "some question" in received_prompts[0]
+
+
+def test_empty_candidates_still_falls_back_when_client_errors_unexpectedly(monkeypatch, caplog):
+    class BrokenClient:
+        def generate(self, prompt):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(cloud_client, "CloudAI100Client", BrokenClient)
+
+    with caplog.at_level(logging.WARNING, logger="lore"):
+        result = rerank_and_generate("some question", [1.0, 0.0], [])
+
+    assert result["ranked_sources"] == []
+    assert "No relevant results found" in result["answer"]
+    assert "Unexpected error" in caplog.text
+
+
 def test_candidates_are_reranked_by_similarity_to_query_embedding():
     query_embedding = [1.0, 0.0]
     candidates = [

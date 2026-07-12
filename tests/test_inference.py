@@ -3,7 +3,13 @@ import types
 
 import pytest
 
-from cloud.inference import CloudAI100Client, build_prompt, generate_answer
+from cloud.inference import (
+    CloudAI100Client,
+    build_general_prompt,
+    build_prompt,
+    generate_answer,
+    generate_general_answer,
+)
 
 
 class FakeClient:
@@ -51,6 +57,35 @@ def test_build_prompt_truncates_long_chunk_text():
 def test_build_prompt_handles_missing_title():
     prompt = build_prompt("query", [{"chunk": "content with no title"}])
     assert "untitled source" in prompt
+
+
+def test_build_general_prompt_includes_the_query():
+    prompt = build_general_prompt("where is the eiffel tower")
+    assert "where is the eiffel tower" in prompt
+    assert prompt.strip().endswith("Answer:")
+
+
+def test_build_general_prompt_does_not_restrict_to_sources():
+    # This is the "nothing indexed matched" fallback — it must not carry
+    # build_prompt()'s "answer ONLY from the sources" restriction, or the
+    # model would just refuse to answer.
+    prompt = build_general_prompt("query")
+    assert "ONLY the sources below" not in prompt
+    assert "general knowledge" in prompt.lower()
+
+
+def test_build_general_prompt_tells_the_model_to_flag_the_answer_as_unsourced():
+    prompt = build_general_prompt("query")
+    assert "isn't based on the user's own files" in prompt
+
+
+def test_generate_general_answer_calls_client_with_the_general_prompt():
+    fake = FakeClient(answer="Paris, France.")
+
+    answer = generate_general_answer("where is the eiffel tower", fake)
+
+    assert answer == "Paris, France."
+    assert fake.received_prompt == build_general_prompt("where is the eiffel tower")
 
 
 def test_cloud_ai100_client_raises_not_implemented_when_api_key_missing(monkeypatch):

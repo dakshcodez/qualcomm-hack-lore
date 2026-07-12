@@ -20,8 +20,10 @@ construction time — the same signal cloud_client.rerank_and_generate()
 already treats as "not configured yet" and falls back from, so /query
 keeps working with a templated answer until real credentials are provided.
 
-Input: query text + reranked chunk rows (from cloud.reranker.rerank()).
-Output: build_prompt() -> str; generate_answer() -> str (the model's answer).
+Input: query text + reranked chunk rows (from cloud.reranker.rerank()), or
+just query text when nothing was found to ground the answer in.
+Output: build_prompt()/build_general_prompt() -> str;
+generate_answer()/generate_general_answer() -> str (the model's answer).
 Side effects: CloudAI100Client.__init__() reads env vars and constructs an
 Imagine SDK client (no network call yet); CloudAI100Client.generate()
 makes a real HTTP call to the Cloud AI 100-hosted model.
@@ -65,6 +67,31 @@ def build_prompt(query, reranked_chunks):
         "question using ONLY the sources below. Cite each source you use "
         "by its title. If the sources don't contain the answer, say so.\n\n"
         f"Sources:\n{sources_block}\n\n"
+        f"Question: {query}\n"
+        "Answer:"
+    )
+
+
+def build_general_prompt(query):
+    """Build a prompt for when no indexed sources matched the query at all
+    (nothing's been indexed yet, or nothing relevant exists) — unlike
+    build_prompt(), this doesn't restrict the model to citing sources; it
+    tells the model there's no personal context available and to answer
+    from general knowledge instead, while being upfront that the answer
+    isn't grounded in anything the user actually wrote or read.
+
+    Args:
+        query: the user's original query text.
+
+    Returns:
+        A prompt string instructing the model to answer generally.
+    """
+    return (
+        "You are Lore, a private on-device assistant. No documents in the "
+        "user's personal index matched this question — either nothing "
+        "relevant has been indexed yet, or the index is empty. Answer from "
+        "your own general knowledge instead, and make clear at the start "
+        "of your answer that this isn't based on the user's own files.\n\n"
         f"Question: {query}\n"
         "Answer:"
     )
@@ -135,3 +162,20 @@ def generate_answer(query, reranked_chunks, client):
     """
     prompt = build_prompt(query, reranked_chunks)
     return client.generate(prompt)
+
+
+def generate_general_answer(query, client):
+    """Generate an answer with no grounding sources at all — the
+    no-candidates-found fallback path. See build_general_prompt().
+
+    Args:
+        query: the user's original query text.
+        client: any object exposing generate(prompt: str) -> str (a real
+            CloudAI100Client, or a test double).
+
+    Returns:
+        The model's answer text (client.generate()'s return value).
+    Side effects: whatever client.generate() does (a real HTTP call to the
+        Cloud AI 100-hosted model, once CloudAI100Client is configured).
+    """
+    return client.generate(build_general_prompt(query))
