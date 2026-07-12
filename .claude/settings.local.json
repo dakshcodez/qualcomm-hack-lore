@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --test tests/)",
+      "Bash(node --test tests/background.test.js)",
+      "Bash(cp background.js background.js.bak)",
+      "Bash(sed -i 's#http://localhost:8000/index#http://localhost:8000/index/web#; s#const body = { text: pageData.content, url: pageData.url, title: pageData.title };#const body = pageData;#' background.js)",
+      "Bash(mv background.js.bak background.js)"
+    ]
+  }
+}
